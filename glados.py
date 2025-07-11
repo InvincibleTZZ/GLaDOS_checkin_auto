@@ -1,42 +1,71 @@
-import requests,json,os
-# -------------------------------------------------------------------------------------------
-# github workflows
-# -------------------------------------------------------------------------------------------
-if __name__ == '__main__':
-# pushplus秘钥 申请地址 http://www.pushplus.plus
-    sckey = os.environ.get("PUSHPLUS_TOKEN", "")
-# 推送内容
-    sendContent = ''
-# glados账号cookie 直接使用数组 如果使用环境变量需要字符串分割一下
-    cookies = os.environ.get("GLADOS_COOKIE", []).split("&")
-    if cookies[0] == "":
-        print('未获取到COOKIE变量') 
-        cookies = []
-        exit(0)
-    url= "https://glados.rocks/api/user/checkin"
-    url2= "https://glados.rocks/api/user/status"
-    referer = 'https://glados.rocks/console/checkin'
-    origin = "https://glados.rocks"
-    useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
-    payload={
-        'token': 'glados.one'
+import requests, json, os, time
+
+def main():
+    pushplus_key = os.environ.get("PUSHPLUS_TOKEN", "")
+    cookies = os.environ.get("GLADOS_COOKIE", "").split("&")
+    
+    # 空值判断修正
+    if not cookies or not any(cookies):
+        print("未获取到有效的COOKIE")
+        if pushplus_key:
+            requests.post(f"https://www.pushplus.plus/send", json={
+                "token": pushplus_key,
+                "title": "GLaDOS签到失败",
+                "content": "未配置COOKIE"
+            })
+        return
+
+    results = []
+    url = "https://glados.rocks/api/user/checkin"
+    status_url = "https://glados.rocks/api/user/status"
+    
+    headers = {
+        'referer': 'https://glados.rocks/console/checkin',
+        'origin': 'https://glados.rocks',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36',
+        'content-type': 'application/json;charset=UTF-8'
     }
+    
     for cookie in cookies:
-        checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
-        state =  requests.get(url2,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent})
-    #--------------------------------------------------------------------------------------------------------#  
-        time = state.json()['data']['leftDays']
-        time = time.split('.')[0]
-        email = state.json()['data']['email']
-        if 'message' in checkin.text:
-            mess = checkin.json()['message']
-            print(email+'----结果--'+mess+'----剩余('+time+')天')  # 日志输出
-            sendContent += email+'----'+mess+'----剩余('+time+')天\n'
-        else:
-            requests.get('http://www.pushplus.plus/send?token=' + sckey + '&content='+email+'cookie已失效')
-            print('cookie已失效')  # 日志输出
-     #--------------------------------------------------------------------------------------------------------#   
-    if sckey != "":
-         requests.get('http://www.pushplus.plus/send?token=' + sckey + '&title='+email+'签到成功'+'&content='+sendContent)
+        if not cookie.strip(): continue  # 跳过空cookie
+        
+        try:
+            # 获取账号状态
+            status_res = requests.get(status_url, headers={**headers, 'cookie': cookie})
+            if status_res.status_code != 200:
+                results.append(f"{cookie[:15]}... - 状态获取失败")
+                continue
+                
+            # 执行签到
+            payload = {'token': 'glados.one'}
+            checkin_res = requests.post(url, headers={**headers, 'cookie': cookie}, 
+                                       data=json.dumps(payload))
+            
+            # 处理结果
+            user_data = status_res.json().get('data', {})
+            email = user_data.get('email', '未知账号')
+            left_days = str(user_data.get('leftDays', 0)).split('.')[0]
+            
+            if checkin_res.status_code == 200:
+                res_data = checkin_res.json()
+                message = res_data.get('message', '无状态信息')
+                results.append(f"{email} - {message} - 剩余{left_days}天")
+            else:
+                results.append(f"{email} - 签到失败: HTTP {checkin_res.status_code}")
+                
+        except Exception as e:
+            results.append(f"处理异常: {str(e)}")
+    
+    # 最终通知
+    summary = "\n".join(results)
+    print(f"签到结果:\n{summary}")
+    
+    if pushplus_key:
+        requests.post("https://www.pushplus.plus/send", json={
+            "token": pushplus_key,
+            "title": "GLaDOS签到结果",
+            "content": summary
+        })
 
-
+if __name__ == '__main__':
+    main()
