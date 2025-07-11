@@ -1,13 +1,15 @@
 name: 开始每日签到
 
-permissions: 
+permissions:
   contents: write   # 关键权限
   actions: read
 
 on:
-  workflow_dispatch:
-  schedule:
+  workflow_dispatch:   # 手动触发
+  schedule:            # 定时触发（UTC 1:30 = 北京9:30）
     - cron: '30 1 * * *'
+  watch:               # 标星触发
+    types: [started]   # 用户给仓库加⭐时激活
 
 jobs:
   build:
