@@ -1,31 +1,42 @@
 name: 开始每日签到
 
+# 添加权限配置
+permissions:
+  contents: write
+  actions: read
+
 on:
-  workflow_dispatch:
-  schedule:
-    # UTC 1点30分(北京时间 9点30分)
-    - cron: 30 1 * * *
-  # 标星时触发工作流程
-  watch:
-    types: [started]
+  workflow_dispatch:   # 手动触发
+  schedule:            # 定时触发
+    - cron: '30 1 * * *'
+  repository_dispatch: # 替换watch类型
+    types: [glados_checkin] 
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4  # 升级到最新版
+
       - name: Set up Python 3.9
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v4
         with:
           python-version: 3.9
+
       - name: Install requirements
         run: |
-          python -m pip install --upgrade pip
           pip install requests
+
       - name: Run checkin
         run: |
           python3 glados.py
         env: 
           GLADOS_COOKIE: "${{ secrets.GLADOS_COOKIE }}"
-          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-      - uses: gautamkrishnar/keepalive-workflow@master  
+          PUSHPLUS_TOKEN: "${{ secrets.PUSHPLUS_TOKEN }}"
+      
+      # 星标触发保持活跃(可选)
+      - uses: gautamkrishnar/keepalive-workflow@v1.2
+        if: ${{ always() }}
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
